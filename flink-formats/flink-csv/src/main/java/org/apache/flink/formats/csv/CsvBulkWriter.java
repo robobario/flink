@@ -31,13 +31,17 @@ import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.dataformat.csv.Csv
 import javax.annotation.Nullable;
 
 import java.io.IOException;
+import java.io.OutputStream;
 
+import static org.apache.flink.formats.csv.FlushDiscardOutputStream.flushDiscardOutputStream;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /** A simple {@link BulkWriter} implementation based on Jackson CSV transformations. */
 class CsvBulkWriter<T, R, C> implements BulkWriter<T> {
 
     private final FSDataOutputStream stream;
+    // workaround to allow jackson to flush internal buffers without flushing underlying stream
+    private final OutputStream flushDiscardStream;
     private final Converter<T, R, C> converter;
     @Nullable private final C converterContext;
     private final ObjectWriter csvWriter;
@@ -55,6 +59,7 @@ class CsvBulkWriter<T, R, C> implements BulkWriter<T> {
         this.stream = checkNotNull(stream);
         this.converterContext = converterContext;
         this.csvWriter = mapper.writer(schema);
+        this.flushDiscardStream = flushDiscardOutputStream(stream);
 
         // Prevent Jackson's writeValue() method calls from closing the stream.
         mapper.getFactory().disable(JsonGenerator.Feature.AUTO_CLOSE_TARGET);
@@ -98,7 +103,7 @@ class CsvBulkWriter<T, R, C> implements BulkWriter<T> {
     @Override
     public void addElement(T element) throws IOException {
         final R r = converter.convert(element, converterContext);
-        csvWriter.writeValue(stream, r);
+        csvWriter.writeValue(flushDiscardStream, r);
     }
 
     @Override
